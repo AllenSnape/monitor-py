@@ -1,0 +1,171 @@
+<!doctype html>
+<html>
+    <head>
+        <meta charset="utf-8">
+        <title>PY监控</title>
+        <script src="http://apps.bdimg.com/libs/jquery/2.1.4/jquery.min.js"></script>
+        <script src="static/jquery.json.js"></script>
+        <script src="http://apps.bdimg.com/libs/layer/2.1/layer.js"></script>
+        <script src="http://apps.bdimg.com/libs/bootstrap/3.3.4/js/bootstrap.min.js"></script>
+        <link rel="stylesheet" href="http://apps.bdimg.com/libs/bootstrap/3.3.4/css/bootstrap.min.css">
+        <link rel="stylesheet" href="http://apps.bdimg.com/libs/fontawesome/4.4.0/css/font-awesome.min.css">
+        
+        <style>
+            #listBox > div {
+                margin-top: 10px;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container-fluid">
+            <h1 class="row"><span class="col-md-12">您请求的时间: {{time}}</span></h1>
+
+            <h1 class="row">
+                <span class="col-md-4">监听列表</span>
+                <div class="col-md-8">
+                    <button class="btn btn-primary" onclick="$('#listBox').append(ITEM_DEMO)">添加</button>
+                    <button class="btn btn-primary" onclick="setListData();">保存列表</button>
+                </div>
+            </h1>
+            <div class="row" id="listBox"></div>
+
+            <div class="row" style="margin-top: 10px;">
+                <div class="col-md-12">
+                    <button class="btn btn-primary" onclick="grabMonitorData();">刷新列表</button>
+                </div>
+            </div>
+            <div id="dataTable" class="container-fluid" style="margin-top: 10px;">
+
+            </div>
+        </div>
+
+        <script>
+
+            const ITEM_DEMO = `
+                <div class="col-md-3">
+                    <input class="form-control" />
+                </div>
+                <div class="col-md-1" style="margin-left: -25px;">
+                    <button class="btn btn-danger" onclick="$(this).parent().prev().remove(); $(this).parent().remove();">×</button>
+                </div>
+            `;
+
+            $(function(){
+                initEditBox();
+                grabMonitorData();
+                setInterval(() => grabMonitorData(), 60000);
+            });
+
+            // 初始化编辑框
+            function initEditBox() {
+                let originalData = JSON.parse(`{{!data}}`);
+                if (originalData === null) {
+                    originalData = [];
+                }
+
+                for (const i in originalData) {
+                    const input = $(ITEM_DEMO);
+                    input.children('input').val(originalData[i]['url']);
+                    $('#listBox').append(input)
+                }
+            }
+
+            // 获取实时信息内容
+            function grabMonitorData() {
+                const layerIndex = layer.load(2);
+                // 获取监控的地址
+                $.ajax({
+                    url: 'list',
+                    type: 'get',
+                    dataType: 'json',
+                    success: function(res) {
+                        $('#dataTable').empty();
+                        if (res instanceof Array) {
+                            for (let i = 0; i < res.length; i++) {
+                                const node = $(`
+                                    <div class="row" style="border: 2px solid rgb(255, 65, 0); border-radius: 4px; padding-bottom: 10px;">
+                                        <div class="col-md-12">
+                                            <h1>链接: ` + res[i]['url'] + `</h1>
+                                        </div>
+                                        <div class="col-md-4">
+                                            <h1>health</h1>
+                                            <div class="item-health">` + (res[i]['health'] ? getJSONFormattedHTML(res[i]['health']) : '') + `</div>
+                                        </div>
+                                        <div class="col-md-4">
+                                            <h1>trace</h1>
+                                            <div class="item-trace">` + (res[i]['trace'] ? getJSONFormattedHTML(res[i]['trace']) : '') + `</div>
+                                        </div>
+                                        <div class="col-md-4">
+                                            <h1>metrics</h1>
+                                            <div class="item-metrics">` + (res[i]['metrics'] ? getJSONFormattedHTML(res[i]['metrics']) : '') + `</div>
+                                        </div>
+                                    </div>
+                                `);
+                                // 模拟点击, 收起trace的内容
+                                const traceCloseBtn0 = node.find('.item-trace').find('i:eq(0)');
+                                if (traceCloseBtn0) traceCloseBtn0.trigger('click');
+                                // 模拟点击, 收起metrics的内容
+                                const metricsCloseBtn0 = node.find('.item-metrics').find('i:eq(0)');
+                                if (metricsCloseBtn0) metricsCloseBtn0.trigger('click');
+                                // 添加到指定节点
+                                $('#dataTable').append(node);
+                            }
+                        }
+
+                        // 关闭layer的loading
+                        layer.close(layerIndex);
+                    },
+                    error: function(e) {
+                        console.error(e);
+
+                        // 关闭layer的loading
+                        layer.close(layerIndex);
+                    }
+                });
+            }
+
+            // 获取json可视化格式后的html
+            function getJSONFormattedHTML(content, gap, defaultValue) {
+                try {
+                    return new JSONFormat(content, gap ? gap : 4).toString();
+                } catch(e) {
+                    console.error(e);
+                    return '<span style="color: #f1592a; font-weight: bold;">' + e + '</span>';
+                }
+                return defaultValue ? defaultValue : '';
+            }
+
+            // 设置扫描的url
+            function setListData() {
+                const layerIndex = layer.load(2);
+                const data = [];
+                $('#listBox').find('input').each((index, item) => {
+                    if ($(item).val && $(item).val() !== '')
+                        data.push({url: $(item).val()});
+                });
+                $.ajax({
+                    url: 'setList',
+                    type: 'post',
+                    data: {
+                        list: JSON.stringify(data)
+                    },
+                    dataType: 'json',
+                    success: function(res) {
+                        if (res.code === -1) {
+                            alert(res.msg);
+                        }
+
+                        // 关闭layer的loading
+                        layer.close(layerIndex);
+                    },
+                    error: function(e) {
+                        console.error(e);
+
+                        // 关闭layer的loading
+                        layer.close(layerIndex);
+                    }
+                });
+            }
+        </script>
+    </body>
+</html>
